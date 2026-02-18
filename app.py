@@ -1,4 +1,3 @@
-# app.py
 import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -17,37 +16,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Read OpenAI API key from environment variable
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
+# Read OpenRouter API key from environment variable
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    raise RuntimeError("OPENROUTER_API_KEY environment variable is not set.")
 
 # Root endpoint (for testing in browser)
 @app.get("/")
 async def root():
     return {"message": "CWC AI Agent is running. Use /chat to send messages."}
 
-# Helper: send message to OpenAI
-async def query_openai(message: str) -> str:
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+# Helper: send message to Qwen via OpenRouter
+async def query_qwen(message: str) -> str:
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
     json_data = {
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": message}],
+        "model": "qwen/qwen-2.5-7b-instruct",
+        "messages": [
+            {"role": "system", "content": "You are the official AI advisor of China West Connector, expert in China business and cross-border deals."},
+            {"role": "user", "content": message}
+        ],
         "temperature": 0.7
     }
 
-    for attempt in range(3):  # retry up to 3 times for 429 errors
+    for attempt in range(3):  # retry up to 3 times
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(url, headers=headers, json=json_data)
             if resp.status_code == 429:
-                await asyncio.sleep(2)  # wait 2 seconds and retry
+                await asyncio.sleep(2)
                 continue
             if resp.status_code != 200:
-                return f"OpenAI error {resp.status_code}: {resp.text}"
+                return f"Qwen error {resp.status_code}: {resp.text}"
             data = resp.json()
+            # OpenRouter returns slightly different structure
             return data["choices"][0]["message"]["content"]
-    return "OpenAI: Too many requests, please try again later."
+    return "Qwen: Too many requests, please try again later."
 
 # Chat endpoint
 @app.api_route("/chat", methods=["POST", "OPTIONS"])
@@ -62,13 +68,5 @@ async def chat(request: Request):
     if not user_message:
         return JSONResponse(content={"reply": "Please send a message."})
 
-    reply_text = await query_openai(user_message)
+    reply_text = await query_qwen(user_message)
     return JSONResponse(content={"reply": reply_text})
-
-
-
-
-
-
-
-
