@@ -25,18 +25,18 @@ app.add_middleware(
 async def chat(request: Request):
     try:
         data = await request.json()
-    except Exception:
-        return JSONResponse(content={"reply": "Invalid request."})
+        user_message = data.get("message", "")
+        if not user_message:
+            return JSONResponse(content={"reply": "Please send a message."})
+    except Exception as e:
+        return JSONResponse(content={"reply": f"Invalid request: {str(e)}"})
 
-    user_message = data.get("message", "")
-    if not user_message:
-        return JSONResponse(content={"reply": "Please send a message."})
+    print(f"Received message: {user_message}")  # <-- Logging for debug
 
-    # Placeholder reply for immediate UI feedback
-    reply_text = "AI is thinking..."
+    # Default reply in case OpenAI fails
+    real_reply = "AI is thinking..."
 
-    # Generate the real AI response with async retry
-    real_reply = reply_text  # default if OpenAI fails
+    # Async call to OpenAI with simple retry for rate limits
     max_retries = 2
     for attempt in range(max_retries):
         try:
@@ -45,12 +45,19 @@ async def chat(request: Request):
                 messages=[{"role": "user", "content": user_message}],
             )
             real_reply = response.choices[0].message.content
+            print(f"AI reply: {real_reply}")  # <-- Logging
             break
         except RateLimitError:
+            print(f"RateLimitError on attempt {attempt+1}")
             if attempt < max_retries - 1:
-                await asyncio.sleep(1)  # <-- async sleep
+                await asyncio.sleep(1)
         except OpenAIError as e:
             real_reply = f"AI error: {str(e)}"
+            print(f"OpenAIError: {str(e)}")
+            break
+        except Exception as e:
+            real_reply = f"Unexpected error: {str(e)}"
+            print(f"Unexpected error: {str(e)}")
             break
 
     return JSONResponse(content={"reply": real_reply})
