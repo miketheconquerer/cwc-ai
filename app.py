@@ -1,4 +1,5 @@
 
+
 import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -6,9 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import asyncio
 
-app = FastAPI(title="CWC AI Agent - Bilingual LLaMA via Groq")
+app = FastAPI(title="CWC AI Agent - Bilingual LLaMA via Groq (Full Answers)")
 
-# CORS settings for Elementor site
+# CORS settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # replace with your site domain
@@ -26,27 +27,23 @@ if not GROQ_API_KEY:
 @app.get("/")
 async def root():
     return {
-        "message": "CWC AI Agent (Bilingual EN/中文) is running. Use /chat to send messages."
+        "message": "CWC AI Agent (Bilingual, Full Answers) is running. Use /chat to send messages."
     }
 
 # Helper: send message to Groq API
-async def query_llama_bilingual(message: str) -> str:
+async def query_llama_bilingual_full(message: str) -> str:
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
 
-    # Bilingual system prompt with few-shot examples
+    # Bilingual system prompt with few-shot examples (shortened for token safety)
     system_prompt = (
         "You are the official AI advisor of China West Connector (CWC), expert in China business, trade, suppliers, and regulations. "
-        "Answer professionally and clearly, staying on-topic. Always respond in the same language as the user (English or Chinese). "
-        "Here are examples:\n\n"
+        "Answer professionally, clearly, staying on-topic. Respond in the same language as the user (English or Chinese). "
+        "Examples:\n"
         "Q: How can I find a reliable supplier for electronics in China?\n"
-        "A: Use CWC to research verified factories in Shenzhen, Guangzhou, and Chengdu. Check certifications and past clients.\n\n"
+        "A: Use CWC to research verified factories in Shenzhen, Guangzhou, and Chengdu. Check certifications and past clients.\n"
         "Q: 我如何找到可靠的中国医疗器械供应商？\n"
-        "A: 您可以使用CWC来查找经过验证的供应商，查看资质和历史客户记录，并联系工厂确认生产能力。\n\n"
-        "Q: What are the import duties for medical devices from China to the EU?\n"
-        "A: Import duties vary by device type, typically 5-10%. Check CE compliance and EU regulations.\n\n"
-        "Q: 我可以得到出口物流的协助吗？\n"
-        "A: 可以，CWC可以协助安排物流、运输公司和海关文件。"
+        "A: 使用CWC查找经过验证的供应商，查看资质和历史客户记录，并联系工厂确认生产能力。\n"
     )
 
     payload = {
@@ -55,18 +52,19 @@ async def query_llama_bilingual(message: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message}
         ],
-        "temperature": 0.7
+        "temperature": 0.7,
+        "max_tokens": 1024  # <- ensures long, complete answers
     }
 
     for attempt in range(3):
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
+            async with httpx.AsyncClient(timeout=25) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code != 200:
                     return f"Groq error {resp.status_code}: {resp.text}"
                 data = resp.json()
                 return data["choices"][0]["message"]["content"]
-        except Exception as e:
+        except Exception:
             await asyncio.sleep(1)
             continue
 
@@ -83,6 +81,5 @@ async def chat(request: Request):
     if not user_message:
         return JSONResponse(content={"reply": "Please send a message."})
 
-    reply_text = await query_llama_bilingual(user_message)
+    reply_text = await query_llama_bilingual_full(user_message)
     return JSONResponse(content={"reply": reply_text})
-
