@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from openai.error import RateLimitError, OpenAIError
 
-# Load OpenAI API key from environment variable
+# Load OpenAI API key from environment variables
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = FastAPI(title="CWC AI Agent")
@@ -15,7 +15,7 @@ app = FastAPI(title="CWC AI Agent")
 # Allow requests from your Elementor site
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace "*" with your domain like "https://www.chinawestconnector.com"
+    allow_origins=["*"],  # Replace "*" with your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,33 +23,41 @@ app.add_middleware(
 
 @app.post("/chat")
 async def chat(request: Request):
-    data = await request.json()
-    user_message = data.get("message", "")
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse(content={"reply": "Invalid request."})
 
+    user_message = data.get("message", "")
     if not user_message:
         return JSONResponse(content={"reply": "Please send a message."})
 
-    max_retries = 2  # Number of retries on 429
+    # First, immediately return a "typing" response for UI feedback
+    # Elementor can show this while AI generates the real response
+    # (Optional: Elementor can display this quickly on the chat bubble)
+    reply_text = "AI is thinking..."
+    
+    # Now generate the real AI response
+    real_reply = reply_text  # default in case OpenAI fails
+    max_retries = 2
     for attempt in range(max_retries):
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": user_message}],
             )
-            reply_text = response.choices[0].message.content
-            break  # Success, exit the retry loop
-
+            real_reply = response.choices[0].message.content
+            break
         except RateLimitError:
             if attempt < max_retries - 1:
-                time.sleep(1)  # Wait 1 second and retry
-                continue
-            reply_text = "AI is receiving too many requests. Please try again in a few seconds."
-
+                time.sleep(1)
         except OpenAIError as e:
-            reply_text = f"AI encountered an error: {str(e)}"
+            real_reply = f"AI error: {str(e)}"
             break
 
-    return JSONResponse(content={"reply": reply_text})
+    # Return the final reply
+    return JSONResponse(content={"reply": real_reply})
+
 
 
 
