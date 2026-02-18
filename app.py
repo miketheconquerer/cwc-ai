@@ -1,6 +1,6 @@
 # app.py
 import os
-import time
+import asyncio
 import openai
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -32,17 +32,15 @@ async def chat(request: Request):
     if not user_message:
         return JSONResponse(content={"reply": "Please send a message."})
 
-    # First, immediately return a "typing" response for UI feedback
-    # Elementor can show this while AI generates the real response
-    # (Optional: Elementor can display this quickly on the chat bubble)
+    # Placeholder reply for immediate UI feedback
     reply_text = "AI is thinking..."
-    
-    # Now generate the real AI response
-    real_reply = reply_text  # default in case OpenAI fails
+
+    # Generate the real AI response with async retry
+    real_reply = reply_text  # default if OpenAI fails
     max_retries = 2
     for attempt in range(max_retries):
         try:
-            response = openai.ChatCompletion.create(
+            response = await openai.ChatCompletion.acreate(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": user_message}],
             )
@@ -50,13 +48,13 @@ async def chat(request: Request):
             break
         except RateLimitError:
             if attempt < max_retries - 1:
-                time.sleep(1)
+                await asyncio.sleep(1)  # <-- async sleep
         except OpenAIError as e:
             real_reply = f"AI error: {str(e)}"
             break
 
-    # Return the final reply
     return JSONResponse(content={"reply": real_reply})
+
 
 
 
