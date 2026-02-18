@@ -1,7 +1,7 @@
 from fastapi import FastAPI, APIRouter
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from textgenrnn import textgenrnn
+import random
 
 # Initialize FastAPI
 app = FastAPI(title="CWC AI API")
@@ -15,8 +15,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize lightweight AI model
-chatbot = textgenrnn.TextgenRnn()
+# Sample responses (lightweight, no heavy AI)
+sample_responses = [
+    "Hello! How can I help you with China business today?",
+    "I can provide guidance on investments, manufacturing, and partnerships in China.",
+    "Welcome! Are you an investor, a company, or a government entity?",
+    "I’m here to assist with China West Connector services and opportunities."
+]
 
 # ---------------------------
 # /respond endpoint
@@ -30,29 +35,12 @@ def respond(data: Message):
     message = data.message
     history = data.history
 
-    # Simple language detection (Chinese / English)
-    language = "Chinese" if any(u'\u4e00' <= c <= u'\u9fff' for c in message) else "English"
-
-    system_prompt = f"""
-You are a senior advisor from China West Connector.
-Language: {language}
-You help with China business, manufacturing, energy, investment, and partnerships.
-Be concise, professional, and high-trust.
-"""
-
     if len(history) == 0:
         return {"reply": "Welcome to CWC AI Advisor! Are you an investor, company, or government entity?"}
 
-    prompt = f"{system_prompt}\nUser: {message}\nAI:"
-
-    # Generate AI response (lightweight)
-    output = chatbot.generate(
-        return_as_list=True,
-        prefix=message,
-        max_gen_length=50
-    )[0]
-
-    return {"reply": output}
+    # Pick a random response for simplicity
+    reply = random.choice(sample_responses)
+    return {"reply": reply}
 
 # ---------------------------
 # /agent endpoint for Moltbook
@@ -69,3 +57,6 @@ def agent_info():
     }
 
 app.include_router(router)
+
+
+   
