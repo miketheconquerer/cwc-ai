@@ -1,14 +1,12 @@
-from agent import router as agent_router
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, APIRouter
 from pydantic import BaseModel
-from transformers import pipeline
+from fastapi.middleware.cors import CORSMiddleware
+from textgenrnn import textgenrnn
 
-# Initialize app
+# Initialize FastAPI
 app = FastAPI(title="CWC AI API")
 
-# Allow CORS for embedding
+# Allow calls from any website
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,16 +15,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load lightweight model
-chatbot = pipeline("text-generation", model="microsoft/DialoGPT-small")
+# Initialize lightweight AI model
+chatbot = textgenrnn.TextgenRnn()
 
-# Serve index.html
-@app.get("/", response_class=HTMLResponse)
-def get_index():
-    with open("index.html", "r", encoding="utf-8") as f:
-        return f.read()
-
-# API endpoint
+# ---------------------------
+# /respond endpoint
+# ---------------------------
 class Message(BaseModel):
     message: str
     history: list = []
@@ -36,7 +30,7 @@ def respond(data: Message):
     message = data.message
     history = data.history
 
-    # Detect language
+    # Simple language detection (Chinese / English)
     language = "Chinese" if any(u'\u4e00' <= c <= u'\u9fff' for c in message) else "English"
 
     system_prompt = f"""
@@ -46,21 +40,32 @@ You help with China business, manufacturing, energy, investment, and partnership
 Be concise, professional, and high-trust.
 """
 
-    # First-time message
     if len(history) == 0:
-        reply = "Welcome to CWC AI Advisor! Are you an investor, company, or government entity?"
-        history.append({"user": message, "ai": reply})
-        return {"reply": reply, "history": history}
+        return {"reply": "Welcome to CWC AI Advisor! Are you an investor, company, or government entity?"}
 
     prompt = f"{system_prompt}\nUser: {message}\nAI:"
-    output = chatbot(prompt, max_length=200, do_sample=True)[0]["generated_text"]
-    reply = output.split("AI:")[-1].strip()
 
-    # Append to history
-    history.append({"user": message, "ai": reply})
+    # Generate AI response (lightweight)
+    output = chatbot.generate(
+        return_as_list=True,
+        prefix=message,
+        max_gen_length=50
+    )[0]
 
-    return {"reply": reply, "history": history}
-app.include_router(agent_router)
+    return {"reply": output}
 
+# ---------------------------
+# /agent endpoint for Moltbook
+# ---------------------------
+router = APIRouter()
 
+@router.get("/agent")
+def agent_info():
+    return {
+        "name": "CWC AI Advisor",
+        "description": "Senior AI advisor for China West Connector, helping with business, investments, partnerships, and manufacturing in China.",
+        "website": "https://www.chinawestconnector.com",
+        "tags": ["China", "Business", "Investment", "Manufacturing", "AI"]
+    }
 
+app.include_router(router)
