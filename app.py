@@ -1,9 +1,9 @@
 # app.py
 import os
-import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
 
 app = FastAPI(title="CWC AI Agent")
 
@@ -16,36 +16,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set your AI API key (can also use Railway environment variable)
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+# Read OpenAI API key from environment variable
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY environment variable not set!")
 
-# Chat endpoint
+# Simple chat endpoint
 @app.post("/chat")
 async def chat(request: Request):
     data = await request.json()
     user_message = data.get("message", "")
-
+    
     if not user_message:
-        return JSONResponse(content={"reply": "No message received."})
+        return JSONResponse(content={"reply": "Please provide a message."})
 
     # Call OpenAI API
-    headers = {"Authorization": f"Bearer {OPENAI_KEY}"}
-    payload = {
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": user_message}],
-        "temperature": 0.7,
-    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            headers = {
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            }
+            json_data = {
+                "model": "gpt-3.5-turbo",
+                "messages": [{"role": "user", "content": user_message}],
+            }
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=json_data,
+            )
+            response.raise_for_status()
+            result = response.json()
+            reply_text = result["choices"][0]["message"]["content"].strip()
+    except httpx.HTTPStatusError as e:
+        return JSONResponse(
+            content={"reply": f"OpenAI API error: {e.response.status_code}"},
+            status_code=500,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"reply": f"Unexpected error: {str(e)}"},
+            status_code=500,
+        )
 
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(OPENAI_URL, headers=headers, json=payload)
-            resp.raise_for_status()
-            result = resp.json()
-            ai_reply = result["choices"][0]["message"]["content"]
-        except Exception as e:
-            ai_reply = f"AI error: {str(e)}"
+    return JSONResponse(content={"reply": reply_text})
 
-    return JSONResponse(content={"reply": ai_reply})
 
 
